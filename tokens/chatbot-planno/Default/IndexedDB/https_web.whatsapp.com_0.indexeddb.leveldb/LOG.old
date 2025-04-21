@@ -1,0 +1,15 @@
+2025/04/21-02:03:13.587 3ab4 Reusing MANIFEST C:\Users\dev\desktop\chatbotplanno\tokens\chatbot-planno\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/04/21-02:03:13.590 3ab4 Recovering log #378
+2025/04/21-02:03:13.604 3ab4 Reusing old log C:\Users\dev\desktop\chatbotplanno\tokens\chatbot-planno\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000378.log 
+2025/04/21-02:03:14.883 3ab4 Level-0 table #384: started
+2025/04/21-02:03:14.896 3ab4 Level-0 table #384: 277756 bytes OK
+2025/04/21-02:03:14.899 3ab4 Delete type=0 #378
+2025/04/21-02:03:14.900 3ab4 Manual compaction at level-0 from '\x00\\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00]\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/04/21-02:03:16.481 1240 Compacting 1@1 + 2@2 files
+2025/04/21-02:03:16.575 1240 Generated table #385@1: 72481 keys, 2236156 bytes
+2025/04/21-02:03:16.640 1240 Generated table #386@1: 51558 keys, 1887404 bytes
+2025/04/21-02:03:16.640 1240 Compacted 1@1 + 2@2 files => 4123560 bytes
+2025/04/21-02:03:16.642 1240 compacted to: files[ 0 0 2 0 0 0 0 ]
+2025/04/21-02:03:16.643 1240 Delete type=2 #380
+2025/04/21-02:03:16.643 1240 Delete type=2 #381
+2025/04/21-02:03:16.643 1240 Delete type=2 #384
