@@ -1,3 +1,17 @@
-2025/04/21-02:04:41.087 2e08 Reusing MANIFEST C:\Users\dev\desktop\chatbotplanno\tokens\chatbot-planno\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
-2025/04/21-02:04:41.088 2e08 Recovering log #383
-2025/04/21-02:04:41.102 2e08 Reusing old log C:\Users\dev\desktop\chatbotplanno\tokens\chatbot-planno\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000383.log 
+2025/04/21-18:33:23.984 3980 Reusing MANIFEST C:\Users\dev\desktop\chatbotplanno\tokens\chatbot-planno\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/04/21-18:33:23.985 3980 Recovering log #607
+2025/04/21-18:33:24.040 3980 Reusing old log C:\Users\dev\desktop\chatbotplanno\tokens\chatbot-planno\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000607.log 
+2025/04/21-18:33:25.480 3980 Level-0 table #614: started
+2025/04/21-18:33:25.509 3980 Level-0 table #614: 663646 bytes OK
+2025/04/21-18:33:25.513 3980 Delete type=0 #607
+2025/04/21-18:33:25.525 3980 Manual compaction at level-0 from '\x00\x84\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x85\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/04/21-18:33:27.561 28f4 Compacting 1@1 + 3@2 files
+2025/04/21-18:33:27.684 28f4 Generated table #615@1: 87397 keys, 2236479 bytes
+2025/04/21-18:33:27.757 28f4 Generated table #616@1: 36955 keys, 2209344 bytes
+2025/04/21-18:33:27.815 28f4 Generated table #617@1: 48016 keys, 1018500 bytes
+2025/04/21-18:33:27.815 28f4 Compacted 1@1 + 3@2 files => 5464323 bytes
+2025/04/21-18:33:27.819 28f4 compacted to: files[ 0 0 3 0 0 0 0 ]
+2025/04/21-18:33:27.820 28f4 Delete type=2 #609
+2025/04/21-18:33:27.820 28f4 Delete type=2 #610
+2025/04/21-18:33:27.820 28f4 Delete type=2 #611
+2025/04/21-18:33:27.820 28f4 Delete type=2 #614

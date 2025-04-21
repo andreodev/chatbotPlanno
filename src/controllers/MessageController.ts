@@ -8,6 +8,7 @@ import AuthService from "../services/auth/AuthService";
 import { Category } from "../models/Category";
 import { ConfirmationHandler } from "../handlers/ConfirmationHandler";
 import type { IContaBancario } from "../interfaces/IContaBancaria";
+import { AccountSelectionHandler } from "../handlers/AccountSelectionHandler";
 
 interface MessageContext {
   phoneNumber: string;
@@ -66,6 +67,7 @@ export class MessageController {
     const response = message.body.toLowerCase().trim();
     const isConfirmed = response === "sim" || response === "s";
 
+
     if (isConfirmed) {
       switch (confirmation.type) {
         case "category":
@@ -119,26 +121,22 @@ export class MessageController {
       const authService = new AuthService();
       const authData = await authService.login();
       const userName = authData.user.name || "Usuário";
-
-      const responseAccount = await authService.SearchAccounts();
-
-      console.log(responseAccount)
-
-      if(responseAccount.count > 1) {
-         this.ListaContaBancaria = responseAccount.data
-         this.ContaBancariaSelecionada = null
-       } else {
-        this.ListaContaBancaria = null
-        this.ContaBancariaSelecionada = responseAccount.data[0]
+  
+      // ✅ Verifica saudação antes de qualquer outra coisa
+      if (this.isGreeting(message.body)) {
+        const greetingResponse = await this.messageView.getGreetingMessage(userName);
+        return this.safeSendText(client, message.from, greetingResponse);
       }
-
+  
+     
+  
       const validCategories = (authData.categories || []).map((cat: any) => ({
-        id: cat.id || "", // Provide a default or generate an ID if missing
+        id: cat.id || "",
         title: cat.title,
         type: cat.type,
-        icon: cat.icon || "🎈", // Provide a default icon if missing
+        icon: cat.icon || "🎈",
       }));
-
+  
       const context: MessageContext = {
         phoneNumber,
         user,
@@ -147,27 +145,54 @@ export class MessageController {
         validCategories,
       };
 
-      const confirmationHandler = new ConfirmationHandler(this.pendingConfirmations);
+      const responseAccount = await authService.SearchAccounts();
+  
+      const contasEncontradas = responseAccount?.data || [];
 
-      // Verificar se há confirmações pendentes
+if (contasEncontradas.length > 1) {
+  this.ListaContaBancaria = contasEncontradas;
+
+  if (!this.ContaBancariaSelecionada) {
+    const selected = await AccountSelectionHandler.handle({
+      message,
+      client,
+      phoneNumber,
+      contas: this.ListaContaBancaria,
+      onSelect: async (contaSelecionada) => {
+        this.ContaBancariaSelecionada = contaSelecionada;
+        this.ListaContaBancaria = null;
+
+        await client.sendText(
+          message.from,
+          `✅ Conta selecionada: *${contaSelecionada.name}*`
+        );
+      },
+    });
+
+    if (selected) return;
+  }
+} else if (contasEncontradas.length === 1) {
+  this.ListaContaBancaria = null;
+  this.ContaBancariaSelecionada = contasEncontradas[0];
+} else {
+  await client.sendText(
+    message.from,
+    "⚠️ Nenhuma conta bancária foi encontrada vinculada ao seu usuário."
+  );
+  return;
+}
+  
+      const confirmationHandler = new ConfirmationHandler(this.pendingConfirmations);
+  
       if (await confirmationHandler.handle(phoneNumber, message, client, context)) {
         return;
       }
-
-      if (this.isGreeting(message.body)) {
-        const greetingResponse = await this.messageView.getGreetingMessage(
-          context.userName
-        );
-        return this.safeSendText(client, message.from, greetingResponse);
-      }
-
+  
       if (message.isFirstMsg || !context.user) {
-        const welcome = await this.messageView.getWelcomeMessage(
-          context.userName
-        );
+        const welcome = await this.messageView.getWelcomeMessage(context.userName);
         return this.safeSendText(client, message.from, welcome);
       }
-
+  
       return this.handleWithDeepSeek(message, client, context);
     } catch (error) {
       this.handleError(error, message, client);
@@ -261,7 +286,8 @@ private isCategoryListRequest(messageBody: string): boolean {
         'categorias válidas',
         'lista de categorias',
         'e quais existem',
-        'traga minhas categorias'
+        'traga minhas categorias',
+        'me mostre minhas categorias'
     ];
     return listKeywords.some(keyword => messageBody.includes(keyword));
 }
@@ -324,6 +350,7 @@ private async handleTransactionWithCategory(
         listaContasBancarias: this.ListaContaBancaria,
         setSelectedContaBancaria: this.setSelectedContaBancaria,
         userName: context.userName,
+        body: message.body
     });
     return this.safeSendText(client, message.from, confirmationMessage);
 }
