@@ -1,56 +1,15 @@
-// src/services/AuthService.ts
-import axios from 'axios';
-import dotenv from 'dotenv';
-import {SearchAccountsResponse, } from "./AuthDto/AuthDto"
-
-dotenv.config();
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  photo: string | null;
-  phone: string | null;
-  idSync: string;
-}
-
-export interface Category {
-  title: string;
-  icon: string;
-  color: string;
-  type: 'expense' | 'income';
-  idSync: string;
-}
-
-export interface ContaBancaria {
-  title: string;
-  icon: string;
-  color: string;
-  type: 'expense' | 'income';
-  idSync: string;
-}
-
-export interface Role {
-  code: string;
-  idSync: string;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: User;
-  categories: Category[];
-  role: Role;
-}
+import axios from "axios";
+import type { AuthResponse, Category, SearchAccountsResponse } from "./AuthDto/AuthDto";
 
 class AuthService {
   private readonly API_URL: string;
   private readonly API_EMAIL: string;
   private readonly API_PASSWORD: string;
 
-  private authToken: string | null = null; 
+  private authToken: string | null = null;  // Armazena o token na memória
 
   constructor() {
-    this.API_URL = process.env.API_URL || '';
+    this.API_URL = process.env.API_URL || 'https://api.planofinancaspessoais.com';
     this.API_EMAIL = process.env.API_EMAIL || 'andreohenriqueleite@gmail.com';
     this.API_PASSWORD = process.env.API_PASSWORD || '30112004as';
     this.setupInterceptors();
@@ -89,7 +48,7 @@ class AuthService {
       });
 
       this.logAuthData(response.data);
-      this.authToken = response.data.token
+      this.authToken = response.data.token;  // Armazena o token na memória
       return response.data;
     } catch (error) {
       this.handleAuthError(error);
@@ -99,18 +58,14 @@ class AuthService {
 
   public async SearchAccounts(): Promise<SearchAccountsResponse> {
     try {
-      if (!this.API_URL) {
-        throw new Error('URL da API não configurada');
+      // Verifica se o token existe e é válido
+      if (!this.authToken) {
+        console.log('🔐 Token não encontrado, realizando login...');
+        await this.login();  // Faz o login se o token não estiver disponível
       }
   
-      if (!this.authToken) {
-        throw new Error('Token de autenticação não disponível. Faça login primeiro.');
-      }
-      
-      console.log('passou aqui')
-
       const response = await axios.get<SearchAccountsResponse>(
-        `https://api.planofinancaspessoais.com/account/search`,
+        `${this.API_URL}/account/search`,
         {
           headers: {
             'Content-Type': 'application/json',
@@ -119,7 +74,7 @@ class AuthService {
           timeout: 10000
         }
       );
-
+  
       return response.data;
     } catch (error) {
       this.handleAuthError(error);
@@ -151,16 +106,31 @@ class AuthService {
     }
   }
 
-  // Método para obter categorias formatadas para uso no frontend
-  public static formatCategories(categories: Category[]) {
-    return categories.reduce((acc, category) => {
-      if (!acc[category.type]) {
-        acc[category.type] = [];
-      }
-      acc[category.type].push(category);
-      return acc;
-    }, {} as Record<'income' | 'expense', Category[]>);
+  public static formatCategories(rawCategories: any[]): Record<'income' | 'expense', Category[]> {
+    const income: Category[] = [];
+    const expense: Category[] = [];
+  
+    rawCategories.forEach((cat: any) => {
+      const formatted: Category = {
+        id: cat.id || '',
+        title: cat.title,
+        type: cat.type,
+        color: cat.color || '#ccc',
+        idSync: cat.idSync || null,
+        icon: cat.icon || '' // Provide a default value or map it from `cat`
+      };
+  
+      if (formatted.type === 'income') income.push(formatted);
+      else if (formatted.type === 'expense') expense.push(formatted);
+    });
+  
+    return { income, expense };
   }
 }
 
 export default AuthService;
+
+
+
+
+

@@ -2,10 +2,9 @@ import axios from "axios";
 import stringSimilarity from 'string-similarity';
 import { DEEPSEEK_CONFIG } from "../config/deepseek";
 import AuthService from "./auth/AuthService";
-import { StringSimilarity } from "../utils/stringSimilarity";
 
 
-interface DeepSeekResponse {
+export interface DeepSeekResponse {
   type: "form" | "message" | "error" | "invalid_category" | "similar_categories";
   data?: {
     value: string;

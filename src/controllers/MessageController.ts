@@ -8,7 +8,8 @@ import AuthService from "../services/auth/AuthService";
 import { Category } from "../models/Category";
 import { ConfirmationHandler } from "../handlers/ConfirmationHandler";
 import type { IContaBancario } from "../interfaces/IContaBancaria";
-import { AccountSelectionHandler } from "../handlers/AccountSelectionHandler";
+import { GreetingHandler } from "../handlers/GreetingHandler";
+import { AccountHandler } from "../handlers/AccountHandler";
 
 interface MessageContext {
   phoneNumber: string;
@@ -27,8 +28,8 @@ interface PendingConfirmation {
 
 export class MessageController {
   private userModel: User;
-  private ContaBancariaSelecionada: IContaBancario | null = null
-  private ListaContaBancaria: IContaBancario[] | null = null
+  private ContaBancariaSelecionada: IContaBancario | any = null;
+  private ListaContaBancaria: IContaBancario[] | any = null;
   private messageView: MessageView;
   private greetings = [
     "oi",
@@ -50,70 +51,6 @@ export class MessageController {
     this.pendingConfirmations = new Map();
   }
 
-  private isGreeting(message: string): boolean {
-    if (!message) return false;
-    return this.greetings.includes(message.toLowerCase().trim());
-  }
-
-  private async handleConfirmation(
-    phoneNumber: string,
-    message: any,
-    client: Whatsapp,
-    context: MessageContext
-  ) {
-    const confirmation = this.pendingConfirmations.get(phoneNumber);
-    if (!confirmation) return false;
-
-    const response = message.body.toLowerCase().trim();
-    const isConfirmed = response === "sim" || response === "s";
-
-
-    if (isConfirmed) {
-      switch (confirmation.type) {
-        case "category":
-          // Aqui você implementaria a criação da categoria no seu banco
-          const newCategory = await this.createCategory(
-            confirmation.data.category
-          );
-          await this.safeSendText(
-            client,
-            message.from,
-            this.messageView.categoryCreatedMessage(newCategory.title)
-          );
-          break;
-
-        case "transaction":
-          // Aqui você implementaria a criação da transação
-          await this.createTransaction(confirmation.data);
-          await this.safeSendText(
-            client,
-            message.from,
-            this.messageView.transactionCreatedMessage(confirmation.data)
-          );
-          break;
-      }
-    } else {
-      await this.safeSendText(
-        client,
-        message.from,
-        "Operação cancelada com sucesso."
-      );
-    }
-
-    this.pendingConfirmations.delete(phoneNumber);
-    return true;
-  }
-
-  private async createCategory(categoryName: string): Promise<Category> {
-    // Implemente a criação real da categoria no seu banco de dados
-    return { id: Date.now().toString(), title: categoryName, type: "expense", icon: "default-icon" };
-  }
-
-  private async createTransaction(data: any) {
-    // Implemente a criação da transação no seu banco
-    console.log("Transação criada:", data);
-  }
-
   public async handleIncomingMessage(message: any, client: Whatsapp) {
     try {
       const phoneNumber = extractPhoneNumber(message.from);
@@ -121,22 +58,14 @@ export class MessageController {
       const authService = new AuthService();
       const authData = await authService.login();
       const userName = authData.user.name || "Usuário";
-  
-      // ✅ Verifica saudação antes de qualquer outra coisa
-      if (this.isGreeting(message.body)) {
-        const greetingResponse = await this.messageView.getGreetingMessage(userName);
-        return this.safeSendText(client, message.from, greetingResponse);
-      }
-  
-     
-  
+
       const validCategories = (authData.categories || []).map((cat: any) => ({
         id: cat.id || "",
         title: cat.title,
         type: cat.type,
         icon: cat.icon || "🎈",
       }));
-  
+
       const context: MessageContext = {
         phoneNumber,
         user,
@@ -145,55 +74,11 @@ export class MessageController {
         validCategories,
       };
 
-      const responseAccount = await authService.SearchAccounts();
-  
-      const contasEncontradas = responseAccount?.data || [];
+      if (await this.processGreeting(message, client, context)) return;
+      if (await this.processAccountSelection(message, client, context)) return;
+      if (await this.processConfirmation(message, client, context)) return;
 
-if (contasEncontradas.length > 1) {
-  this.ListaContaBancaria = contasEncontradas;
-
-  if (!this.ContaBancariaSelecionada) {
-    const selected = await AccountSelectionHandler.handle({
-      message,
-      client,
-      phoneNumber,
-      contas: this.ListaContaBancaria,
-      onSelect: async (contaSelecionada) => {
-        this.ContaBancariaSelecionada = contaSelecionada;
-        this.ListaContaBancaria = null;
-
-        await client.sendText(
-          message.from,
-          `✅ Conta selecionada: *${contaSelecionada.name}*`
-        );
-      },
-    });
-
-    if (selected) return;
-  }
-} else if (contasEncontradas.length === 1) {
-  this.ListaContaBancaria = null;
-  this.ContaBancariaSelecionada = contasEncontradas[0];
-} else {
-  await client.sendText(
-    message.from,
-    "⚠️ Nenhuma conta bancária foi encontrada vinculada ao seu usuário."
-  );
-  return;
-}
-  
-      const confirmationHandler = new ConfirmationHandler(this.pendingConfirmations);
-  
-      if (await confirmationHandler.handle(phoneNumber, message, client, context)) {
-        return;
-      }
-  
-      if (message.isFirstMsg || !context.user) {
-        const welcome = await this.messageView.getWelcomeMessage(context.userName);
-        return this.safeSendText(client, message.from, welcome);
-      }
-  
-      return this.handleWithDeepSeek(message, client, context);
+      await this.handleWithDeepSeek(message, client, context);
     } catch (error) {
       this.handleError(error, message, client);
     }
@@ -242,118 +127,135 @@ if (contasEncontradas.length > 1) {
     return null;
   }
 
-  private async handleWithDeepSeek(message: any, client: any, context: MessageContext) {
+  private async handleWithDeepSeek(
+    message: any,
+    client: any,
+    context: MessageContext
+  ) {
     if (!message.body || typeof message.body !== "string") {
-        const text = this.messageView.invalidMessageResponse();
-        return this.safeSendText(client, message.from, text);
+      const text = this.messageView.invalidMessageResponse();
+      return this.safeSendText(client, message.from, text);
     }
 
     const messageBody = message.body.toLowerCase().trim();
-    
+
     // 1. Verificação para LISTAGEM de categorias (prioridade máxima)
     if (this.isCategoryListRequest(messageBody)) {
-        const categoriesMessage = this.messageView.listAllCategories(context.validCategories);
-        return this.safeSendText(client, message.from, categoriesMessage);
+      const categoriesMessage = this.messageView.listAllCategories(
+        context.validCategories
+      );
+      return this.safeSendText(client, message.from, categoriesMessage);
     }
 
     // 2. Verificação para ADIÇÃO de novas categorias
     if (this.isAddCategoryRequest(messageBody)) {
-        const helpMessage = this.messageView.getCategoryHelpMessage(context.validCategories);
-        return this.safeSendText(client, message.from, helpMessage);
+      const helpMessage = this.messageView.getCategoryHelpMessage(
+        context.validCategories
+      );
+      return this.safeSendText(client, message.from, helpMessage);
     }
 
     // 3. Processamento normal com DeepSeek
-    const aiResponse = await deepseekService.generateFormattedResponse(message.body);
+    const aiResponse = await deepseekService.generateFormattedResponse(
+      message.body
+    );
 
     if (aiResponse.data?.category) {
-        return this.handleTransactionWithCategory(message, client, context, aiResponse);
+      return this.handleTransactionWithCategory(
+        message,
+        client,
+        context,
+        aiResponse
+      );
     }
 
     return this.safeSendText(
-        client,
-        message.from,
-        aiResponse.content || "🤖 Resposta padrão"
+      client,
+      message.from,
+      aiResponse.content || "🤖 Resposta padrão"
     );
-}
+  }
 
-// Métodos auxiliares novos:
-private isCategoryListRequest(messageBody: string): boolean {
+  // Métodos auxiliares novos:
+  private isCategoryListRequest(messageBody: string): boolean {
     const listKeywords = [
-        'categorias existentes',
-        'listar categorias',
-        'quais categorias',
-        'me diga as categorias',
-        'categorias válidas',
-        'lista de categorias',
-        'e quais existem',
-        'traga minhas categorias',
-        'me mostre minhas categorias'
+      "categorias existentes",
+      "listar categorias",
+      "quais categorias",
+      "me diga as categorias",
+      "categorias válidas",
+      "lista de categorias",
+      "e quais existem",
+      "traga minhas categorias",
+      "me mostre minhas categorias",
     ];
-    return listKeywords.some(keyword => messageBody.includes(keyword));
-}
+    return listKeywords.some((keyword) => messageBody.includes(keyword));
+  }
 
-private isAddCategoryRequest(messageBody: string): boolean {
+  private isAddCategoryRequest(messageBody: string): boolean {
     const addKeywords = [
-        'adicionar categorias',
-        'nova categoria',
-        'como faço pra adicionar',
-        'criar categoria',
-        'adicionar nova categoria',
-        
+      "adicionar categorias",
+      "nova categoria",
+      "como faço pra adicionar",
+      "criar categoria",
+      "adicionar nova categoria",
     ];
-    return addKeywords.some(keyword => messageBody.includes(keyword));
-}
+    return addKeywords.some((keyword) => messageBody.includes(keyword));
+  }
 
-private async handleTransactionWithCategory(
+  private async handleTransactionWithCategory(
     message: any,
     client: any,
     context: MessageContext,
     aiResponse: any
-) {
+  ) {
     const bestMatch = await this.findBestCategoryMatch(
-        aiResponse.data.category,
-        context.validCategories
+      aiResponse.data.category,
+      context.validCategories
     );
 
     if (!bestMatch) {
-        const isVehicleRelated = /(gasolina|posto|combustível|abastecer|carro|moto)/i.test(
-            aiResponse.data.category
+      const isVehicleRelated =
+        /(gasolina|posto|combustível|abastecer|carro|moto)/i.test(
+          aiResponse.data.category
         );
-        const suggestedCategory = isVehicleRelated ? "Transporte" : "Outros";
+      const suggestedCategory = isVehicleRelated ? "Transporte" : "Outros";
 
-        this.pendingConfirmations.set(context.phoneNumber, {
-            type: "category",
-            data: aiResponse.data,
-            suggestedCategory,
-            timestamp: Date.now(),
-        });
+      this.pendingConfirmations.set(context.phoneNumber, {
+        type: "category",
+        data: aiResponse.data,
+        suggestedCategory,
+        timestamp: Date.now(),
+      });
 
-        const response = this.messageView.suggestCategoryMessage(
-            aiResponse.data.category,
-            suggestedCategory,
-            context.validCategories
-        );
-        return this.safeSendText(client, message.from, response);
+      const response = this.messageView.suggestCategoryMessage(
+        aiResponse.data.category,
+        suggestedCategory,
+        context.validCategories
+      );
+      return this.safeSendText(client, message.from, response);
     }
 
     aiResponse.data.category = bestMatch.title;
 
     this.pendingConfirmations.set(context.phoneNumber, {
-        type: "transaction",
-        data: aiResponse.data,
-        timestamp: Date.now(),
+      type: "transaction",
+      data: aiResponse.data,
+      timestamp: Date.now(),
     });
 
-    const confirmationMessage = this.messageView.transactionConfirmationMessage({
+    const confirmationMessage = this.messageView.transactionConfirmationMessage(
+      {
         ...aiResponse.data,
         contaBancariaSelecionada: this.ContaBancariaSelecionada,
         listaContasBancarias: this.ListaContaBancaria,
         setSelectedContaBancaria: this.setSelectedContaBancaria,
         userName: context.userName,
-        body: message.body
-    });
+        body: message.body,
+      }
+    );
     return this.safeSendText(client, message.from, confirmationMessage);
-}
+  }
   private async safeSendText(
     client: Whatsapp,
     to: string,
@@ -371,7 +273,7 @@ private async handleTransactionWithCategory(
   }
 
   private setSelectedContaBancaria(contaBancaria: IContaBancario) {
-    this.ContaBancariaSelecionada = contaBancaria
+    this.ContaBancariaSelecionada = contaBancaria;
   }
 
   private handleError(error: any, message: any, client: Whatsapp) {
@@ -383,6 +285,63 @@ private async handleTransactionWithCategory(
 
     const fallbackError = this.messageView.errorResponse();
     this.safeSendText(client, message.from, fallbackError);
+  }
+
+  private async processGreeting(
+    message: any,
+    client: Whatsapp,
+    context: MessageContext
+  ) {
+    if (GreetingHandler.isGreeting(message.body)) {
+      const greetingResponse = await this.messageView.getGreetingMessage(
+        context.userName
+      );
+      await this.safeSendText(client, message.from, greetingResponse);
+      return true;
+    }
+    return false;
+  }
+
+  private async processAccountSelection(
+    message: any,
+    client: Whatsapp,
+    context: MessageContext
+  ): Promise<boolean> {
+    let selecionada = false;
+  
+    const conta = await AccountHandler.selectBankAccount(
+      context.phoneNumber,
+      message,
+      client,
+      this.ContaBancariaSelecionada,
+      (conta) => {
+        this.ContaBancariaSelecionada = conta;
+        selecionada = true;
+      }
+    );
+  
+    if (conta) {
+      this.ContaBancariaSelecionada = conta;
+      selecionada = true;
+    }
+  
+    return selecionada;
+  }
+
+  private async processConfirmation(
+    message: any,
+    client: Whatsapp,
+    context: MessageContext
+  ) {
+    const confirmationHandler = new ConfirmationHandler(
+      this.pendingConfirmations
+    );
+    return await confirmationHandler.handle(
+      context.phoneNumber,
+      message,
+      client,
+      context
+    );
   }
 }
 

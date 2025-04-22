@@ -4,6 +4,7 @@ export interface Category {
   color: string;
   type: 'expense' | 'income';
   idSync: string;
+  id: string
 }
 
 export interface Role {

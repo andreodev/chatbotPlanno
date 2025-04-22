@@ -1,5 +1,7 @@
 // src/context/AppContext.ts
-import AuthService, { AuthResponse, Category, Role } from '../services/auth/AuthService';
+
+import type { AuthResponse, Category, Role } from "../services/auth/AuthDto/AuthDto";
+import AuthService from "../services/auth/AuthService";
 
 class AppContext {
   private static instance: AppContext;
@@ -14,31 +16,43 @@ class AppContext {
     return AppContext.instance;
   }
 
-  public setAuthData(data: AuthResponse): void {
-    this.authData = data;
-  }
-
-  public getAuthData(): AuthResponse {
+  public async getAuthData(): Promise<AuthResponse> {
     if (!this.authData) {
-      throw new Error('Dados de autenticação ainda não foram carregados.');
+      console.log("🔍 Iniciando processo de login...");
+      this.authData = await new AuthService().login();
+      console.log("✅ Login bem-sucedido!");
+      console.log("👤 Usuário:", {
+        id: this.authData.user.id,
+        name: this.authData.user.name,
+        email: this.authData.user.email
+      });
     }
     return this.authData;
   }
 
-  public getUser() {
-    return this.getAuthData().user;
+  public resetAuth(): void {
+    this.authData = null;
   }
 
-  public getToken() {
-    return this.getAuthData().token;
+  public async getCategories(): Promise<Record<'income' | 'expense', Category[]>> {
+    const auth = await this.getAuthData();
+    return AuthService.formatCategories(auth.categories);
   }
 
-  public getCategories(): Record<'income' | 'expense', Category[]> {
-    return AuthService.formatCategories(this.getAuthData().categories);
+  public async getRole(): Promise<Role> {
+    const auth = await this.getAuthData();
+    return auth.role;
   }
 
-  public getRole(): Role {
-    return this.getAuthData().role;
+  public async getToken(): Promise<string> {
+    const auth = await this.getAuthData();
+    return auth.token;
+  }
+
+
+  public async getUser() {
+    const auth = await this.getAuthData();
+    return auth.user;
   }
 }
 

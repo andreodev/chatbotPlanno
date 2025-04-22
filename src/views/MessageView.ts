@@ -1,5 +1,5 @@
 import AppContext from "../context/AppContext";
-import type { IContaBancario } from "../interfaces/IContaBancaria";
+import { IContaBancario } from "../interfaces/IContaBancaria";
 import { Category } from "../models/Category";
 
 class MessageView {
@@ -18,25 +18,9 @@ class MessageView {
   }
 
   public async getGreetingMessage(userName?: string): Promise<string> {
-    userName = await this.getUserName(userName);
+    const user = await AppContext.getUser();
+    userName = user.name; // Assuming 'name' is the string property of the User object
     return this.getWelcomeTemplate(userName);
-  }
-
-  public async getWelcomeMessage(userName?: string): Promise<string> {
-    userName = await this.getUserName(userName);
-    return this.getWelcomeTemplate(userName);
-  }
-
-  private async getUserName(userName?: string): Promise<string> {
-    if (!userName) {
-      try {
-        const user = AppContext.getUser();
-        userName = user.name;
-      } catch {
-        userName = "amigo(a)";
-      }
-    }
-    return userName;
   }
 
   private getWelcomeTemplate(userName: string): string {
@@ -63,7 +47,7 @@ class MessageView {
     invalidCategory: string,
     validCategories: Category[]
   ): string {
-    const categoriesList = this.formatCategoriesList(validCategories);
+    const categoriesList = this.formatCategoriesList(validCategories); // Usar o método correto
     return (
       `🔍 *Categoria não encontrada*\n\n` +
       `A categoria "${invalidCategory}" não existe em seu cadastro.\n\n` +
@@ -71,14 +55,14 @@ class MessageView {
       `Deseja criar "${invalidCategory}"? (Sim/Não)`
     );
   }
-
+  
   public suggestCategoryMessage(
     originalCategory: string,
     suggestedCategory: string,
     validCategories: Category[]
   ): string {
-    const categoriesList = this.formatCategoriesList(validCategories);
-
+    const categoriesList = this.formatCategoriesList(validCategories); // Usar o método correto
+  
     return (
       `🔍 *Sugestão de Categoria*\n\n` +
       `Para "${originalCategory}", sugerimos usar:\n` +
@@ -87,7 +71,7 @@ class MessageView {
       `Deseja usar *${suggestedCategory}*? (Sim/Não)`
     );
   }
-
+  
   private formatCategoriesList(categories: Category[]): string {
     return categories
       .map((c) => `• ${c.title} ${c.type === "expense" ? "📉" : "📈"}`)
@@ -113,70 +97,88 @@ class MessageView {
     type: string;
     body: string;
   }): string {
-    // Se ainda não foi escolhida a conta bancária
     if (!data.contaBancariaSelecionada) {
-      const contas = data.listaContasBancarias || [];
-
-      // Se não houver contas registradas
-      if (contas.length === 0) {
-        return `❌ Não há contas bancárias registradas. Por favor, adicione uma conta antes de continuar.`;
-      }
-
-      // Verifica se o usuário mandou um número na resposta
-      const escolhaUsuario = parseInt(data.body.trim());
-
-      // Se o número da conta for válido
-      if (
-        !isNaN(escolhaUsuario) &&
-        escolhaUsuario > 0 &&
-        escolhaUsuario <= contas.length
-      ) {
-        const contaSelecionada = contas[escolhaUsuario - 1];
-        data.setSelectedContaBancaria(contaSelecionada);
-
-        // Se a conta for selecionada corretamente, faz a transição para o próximo passo
-        return this.transactionConfirmationMessage({
-          ...data,
-          contaBancariaSelecionada: contaSelecionada,
-          body: "", // Limpa a resposta anterior após a seleção
+      return this.requestAccountSelection(data);
+    }
+  
+    if (data.contaBancariaSelecionada) {
+      if (data.type) {
+        return this.confirmTransaction({
+          value: data.value,
+          category: data.category,
+          contaBancariaSelecionada: data.contaBancariaSelecionada,
+          type: data.type,
+        });
+      } else {
+        return this.confirmTransaction({
+          value: data.value,
+          category: data.category,
+          contaBancariaSelecionada: data.contaBancariaSelecionada,
+          type: "expense", // Definindo tipo padrão
         });
       }
+    }
+  
+    return `❌ Não foi possível processar a transação. Por favor, tente novamente.`;
+  }
 
-      // Exibe as contas bancárias numeradas para o usuário escolher
-      const listaContasFormatada = contas
-        .map((conta, index) => `${index + 1}. ${conta.name}`)
-        .join("\n");
+  private requestAccountSelection(data: {
+    listaContasBancarias: IContaBancario[] | null;
+    contaBancariaSelecionada: IContaBancario | null;
+    setSelectedContaBancaria: (Conta: IContaBancario) => void;
+    body: string;
+  }): string {
+    const contas = data.listaContasBancarias || [];
+    console.log("dados: ", data.listaContasBancarias);
 
-      return `💳 *Selecione uma Conta Bancária*\n\n${listaContasFormatada}\n\nResponda com o número da conta que deseja usar.`;
+    if (contas.length === 0) {
+      return `❌ Não há contas bancárias registradas. Por favor, adicione uma conta antes de continuar.`;
     }
 
-    if (data.contaBancariaSelecionada) {
-      return `✅ *Transação Confirmada!*\n\nVocê escolheu a conta: *${
-        data.contaBancariaSelecionada.name
-      }*\nValor: *${data.value}*\nCategoria: *${data.category}*\nTipo: *${
-        data.type
-      }*\n\nSe tudo estiver correto, confirme a transação.`;
+    const escolhaUsuario = parseInt(data.body.trim());
+
+    if (!isNaN(escolhaUsuario) && escolhaUsuario > 0 && escolhaUsuario <= contas.length) {
+      const contaSelecionada = contas[escolhaUsuario - 1];
+      data.setSelectedContaBancaria(contaSelecionada);
+
     }
 
-    // Caso algum dado seja inválido ou falte informação
-    return `❌ Algo deu errado. Por favor, tente novamente.`;
+    const listaContasFormatada = contas
+      .map((conta, index) => `${index + 1}. ${conta.name}`)
+      .join("\n");
+
+    return `💳 *Selecione uma Conta Bancária*\n\n${listaContasFormatada}\n\nResponda com o número da conta que deseja usar.`;
+  }
+
+  private confirmTransaction(data: {
+    value: string;
+    category: string;
+    contaBancariaSelecionada: IContaBancario;
+    type: string;
+  }): string {
+    return `✅ *Transação Confirmada!*\n\nVocê escolheu a conta: *${data.contaBancariaSelecionada.name}*\nValor: *${data.value}*\nCategoria: *${data.category}*\nTipo: *${data.type}*\n\nSe tudo estiver correto, confirme a transação.`;
   }
 
   public transactionCreatedMessage(data: {
-    value: string;
-    category: string;
-    userName?: string;
-    type: string;
-  }): string {
-    let message =
-      `✅ *Transação registrada!*\n\n` +
-      `▸ *Valor:* R$ ${data.value}\n` +
-      `▸ *Nome:* ${data.userName}\n` +
-      `▸ *Tipo:* ${data.type === "expense" ? "Despesa 📉" : "Receita 📈"}\n`;
-
-    message += `\nObrigado por usar o Planno! 💚`;
-    return message;
+  value: string;
+  category: string;
+  userName?: string;
+  type: string;
+}): string {
+  if (!data.type) {
+    // Atribua um valor padrão ou avise sobre a falta de tipo
+    console.warn('Tipo de transação não especificado, atribuindo valor padrão.');
+    data.type = 'expense'; // Atribuindo valor padrão
   }
+
+  return (
+    `✅ *Transação registrada!*\n\n` +
+    `▸ *Valor:* R$ ${data.value}\n` +
+    `▸ *Nome:* ${data.userName}\n` +
+    `▸ *Tipo:* ${data.type === "expense" ? "Despesa 📉" : "Receita 📈"}\n` +
+    `\nObrigado por usar o Planno! 💚`
+  );
+}
 
   public getCategoryHelpMessage(validCategories: Category[]): string {
     return (
@@ -193,17 +195,14 @@ class MessageView {
   }
 
   public listAllCategories(validCategories: Category[]): string {
-    // Separar despesas e receitas
     const expenses = validCategories.filter((c) => c.type === "expense");
     const incomes = validCategories.filter((c) => c.type === "income");
 
-    // Formatar a lista de categorias
     const formatCategoryList = (categories: Category[]) =>
       categories
         .map((c) => `• ${c.title} ${c.type === "expense" ? "📉" : "📈"}`)
         .join("\n");
 
-    // Construir a mensagem
     let message = `📋 *Categorias Disponíveis no Planno* 📋\n\n`;
 
     message += `📉 *Despesas:*\n${formatCategoryList(expenses)}\n\n`;
