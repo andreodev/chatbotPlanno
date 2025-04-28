@@ -28,11 +28,6 @@ export class AccountHandler {
 
       // Se o usuário tem múltiplas contas e nenhuma conta foi selecionada
       if (contasEncontradas.length > 1 && !contaSelecionadaEscolhida) {
-        await client.sendText(
-          message.from,
-          "Você tem múltiplas contas bancárias vinculadas. Por favor, selecione uma para continuar."
-        );
-
         // Chama o handler de seleção de conta
         const contaSelecionada = await AccountSelectionHandler.handle({
           message,
