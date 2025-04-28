@@ -136,5 +136,4 @@ dist
 .pnp.*
 
 #tokens 
-
-.tokens
+tokens/

@@ -273,7 +273,7 @@ private async processTransactionConfirmation(
 
     try {
         // Mostra a confirmação final
-        const finalConfirmation = this.messageView.confirmTransaction(transactionData);
+        const finalConfirmation = this.messageView.transactionCreatedMessage(transactionData);
         await this.safeSendText(client, message.from, finalConfirmation);
 
         // Salva a transação

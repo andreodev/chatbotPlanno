@@ -163,11 +163,12 @@ class MessageView {
     }
 
     return (
-      `✅ *Transação Registrada!*\n\n` +
+      `✅ *Transação Criada com sucesso!*\n\n` +
       `▸ *Conta:* ${data.contaBancariaSelecionada.name}\n` +
       `▸ *Valor:* R$ ${data.value}\n` +
       `▸ *Categoria:* ${data.category}\n` +
-      `▸ *Tipo:* ${data.type === "income" ? "📥 Entrada" : "📤 Saída"}\n\n`
+      `▸ *Tipo:* ${data.type === "income" ? "📥 Entrada" : "📤 Saída"}\n\n` +
+      `Se tudo estiver correto, confirme com *Sim* ou cancele com *Não*.`
     );
 
   }
@@ -189,11 +190,11 @@ class MessageView {
     }
 
     return (
-      `✅ *Transação Registrada!*\n\n` +
+      `✅ *Dados enviado ao aplicativo!*\n\n` +
       `▸ *Conta:* ${data.contaBancariaSelecionada.name}\n` +
       `▸ *Valor:* R$ ${data.value}\n` +
       `▸ *Categoria:* ${data.category}\n` +
-      `▸ *Tipo:* ${data.type === "income" ? "📥 Entrada" : "📤 Saída"}\n\n`
+      `▸ *Tipo:* ${data.type === "income" ? "📥 Entrada" : "📤 Saída"}`
     );
   }
 
