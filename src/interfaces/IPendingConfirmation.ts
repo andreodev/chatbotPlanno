@@ -3,4 +3,5 @@ export interface PendingConfirmation {
   data: any;
   timestamp: number;
   suggestedCategory?: string;
+  needsBankAccount?: boolean;
 }

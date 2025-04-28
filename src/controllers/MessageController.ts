@@ -6,7 +6,6 @@ import deepseekService from "../services/DeepSeekService";
 import { Whatsapp } from "venom-bot";
 import AuthService from "../services/auth/AuthService";
 import { Category } from "../models/Category";
-import { ConfirmationHandler } from "../handlers/ConfirmationHandler";
 import type { IContaBancario } from "../interfaces/IContaBancaria";
 import { GreetingHandler } from "../handlers/GreetingHandler";
 import { AccountHandler } from "../handlers/AccountHandler";
@@ -53,36 +52,16 @@ export class MessageController {
 
   public async handleIncomingMessage(message: any, client: Whatsapp) {
     try {
-      const phoneNumber = extractPhoneNumber(message.from);
-      const user = await this.userModel.findByPhone(phoneNumber);
-      const authService = new AuthService();
-      const authData = await authService.login();
-      const userName = authData.user.name || "Usuário";
+        const context = await this.buildContext(message);
 
-      const validCategories = (authData.categories || []).map((cat: any) => ({
-        id: cat.id || "",
-        title: cat.title,
-        type: cat.type,
-        icon: cat.icon || "🎈",
-      }));
-
-      const context: MessageContext = {
-        phoneNumber,
-        user,
-        userName,
-        authData,
-        validCategories,
-      };
-
-      if (await this.processGreeting(message, client, context)) return;
-      if (await this.processAccountSelection(message, client, context)) return;
-      if (await this.processConfirmation(message, client, context)) return;
-
-      await this.handleWithDeepSeek(message, client, context);
+        if (await this.processGreeting(message, client, context)) return;
+        if (await this.processAccountSelection(message, client, context)) return;
+        if (await this.processTransactionConfirmation(message, client, context)) return; // Nova linha
+        await this.handleWithDeepSeek(message, client, context);
     } catch (error) {
-      this.handleError(error, message, client);
+        this.handleError(error, message, client);
     }
-  }
+}
 
   private async findBestCategoryMatch(
     categoryName: string,
@@ -137,29 +116,12 @@ export class MessageController {
       return this.safeSendText(client, message.from, text);
     }
 
-    const messageBody = message.body.toLowerCase().trim();
-
-    // 1. Verificação para LISTAGEM de categorias (prioridade máxima)
-    if (this.isCategoryListRequest(messageBody)) {
-      const categoriesMessage = this.messageView.listAllCategories(
-        context.validCategories
-      );
-      return this.safeSendText(client, message.from, categoriesMessage);
-    }
-
-    // 2. Verificação para ADIÇÃO de novas categorias
-    if (this.isAddCategoryRequest(messageBody)) {
-      const helpMessage = this.messageView.getCategoryHelpMessage(
-        context.validCategories
-      );
-      return this.safeSendText(client, message.from, helpMessage);
-    }
-
     // 3. Processamento normal com DeepSeek
     const aiResponse = await deepseekService.generateFormattedResponse(
       message.body
     );
 
+    console.log("AI RESPONSE DATA", aiResponse);
     if (aiResponse.data?.category) {
       return this.handleTransactionWithCategory(
         message,
@@ -208,54 +170,174 @@ export class MessageController {
     client: any,
     context: MessageContext,
     aiResponse: any
-  ) {
+) {
     const bestMatch = await this.findBestCategoryMatch(
-      aiResponse.data.category,
-      context.validCategories
+        aiResponse.data.category,
+        context.validCategories
     );
 
     if (!bestMatch) {
-      const isVehicleRelated =
-        /(gasolina|posto|combustível|abastecer|carro|moto)/i.test(
-          aiResponse.data.category
+        const isVehicleRelated =
+            /(gasolina|posto|combustível|abastecer|carro|moto)/i.test(
+                aiResponse.data.category
+            );
+        const suggestedCategory = isVehicleRelated ? "Transporte" : "Outros";
+
+        this.pendingConfirmations.set(context.phoneNumber, {
+            type: "category",
+            data: aiResponse.data,
+            suggestedCategory,
+            timestamp: Date.now(),
+        });
+
+        const response = this.messageView.suggestCategoryMessage(
+            aiResponse.data.category,
+            suggestedCategory,
+            context.validCategories
         );
-      const suggestedCategory = isVehicleRelated ? "Transporte" : "Outros";
-
-      this.pendingConfirmations.set(context.phoneNumber, {
-        type: "category",
-        data: aiResponse.data,
-        suggestedCategory,
-        timestamp: Date.now(),
-      });
-
-      const response = this.messageView.suggestCategoryMessage(
-        aiResponse.data.category,
-        suggestedCategory,
-        context.validCategories
-      );
-      return this.safeSendText(client, message.from, response);
+        return this.safeSendText(client, message.from, response);
     }
 
     aiResponse.data.category = bestMatch.title;
 
-    this.pendingConfirmations.set(context.phoneNumber, {
-      type: "transaction",
-      data: aiResponse.data,
-      timestamp: Date.now(),
-    });
+    if (!aiResponse.data.type) {
+      aiResponse.data.type = "expense"; // 👈 ajuste aqui conforme sua regra
+  }
 
-    const confirmationMessage = this.messageView.transactionConfirmationMessage(
-      {
+    // Prepara os dados para a confirmação
+    const confirmationData = {
         ...aiResponse.data,
         contaBancariaSelecionada: this.ContaBancariaSelecionada,
         listaContasBancarias: this.ListaContaBancaria,
         setSelectedContaBancaria: this.setSelectedContaBancaria,
         userName: context.userName,
         body: message.body,
-      }
-    );
-    return this.safeSendText(client, message.from, confirmationMessage);
+    };
+
+    // 1. Primeiro mostra a mensagem de confirmação inicial
+    const confirmationMessage = this.messageView.transactionConfirmationMessage(confirmationData);
+    await this.safeSendText(client, message.from, confirmationMessage);
+
+    // 2. Armazena os dados da transação para usar depois do "sim"
+    this.pendingConfirmations.set(context.phoneNumber, {
+      type: "transaction",
+      data: {
+          originalData: aiResponse.data,
+          confirmationData: confirmationData,
+          contaBancariaSelecionada: this.ContaBancariaSelecionada // <-- adiciona isso
+      },
+      timestamp: Date.now(),
+  });
+
+    // Não faz return aqui, deixa o fluxo continuar para processar a resposta
+}
+
+// Adicione este método no MessageController para processar a resposta "sim"
+
+
+private async processTransactionConfirmation(
+  message: any,
+  client: Whatsapp,
+  context: MessageContext
+) {
+  const confirmation = this.pendingConfirmations.get(context.phoneNumber);
+  if (!confirmation || confirmation.type !== "transaction") return false;
+
+  const response = message.body.toLowerCase().trim();
+  if (response === "sim" || response === "s") {
+    // Verifica se todos os dados necessários estão presentes
+    if (!confirmation.data.originalData?.value || 
+        !confirmation.data.originalData?.category ||
+        !this.ContaBancariaSelecionada ||
+        !confirmation.data.originalData?.type) {
+
+        await this.safeSendText(
+            client, 
+            message.from, 
+            "❌ Dados incompletos para confirmar a transação. Por favor, inicie novamente."
+        );
+        this.pendingConfirmations.delete(context.phoneNumber);
+        return false;
+    }
+
+    // Prepara os dados garantindo que todos os campos existam
+    const transactionData = {
+        value: confirmation.data.originalData.value.toString(),
+        category: confirmation.data.originalData.category,
+        contaBancariaSelecionada: this.ContaBancariaSelecionada,
+        type: confirmation.data.originalData.type,
+        accountId: this.ContaBancariaSelecionada.idSync || null
+    };
+
+    console.log(transactionData);
+
+    try {
+        // Mostra a confirmação final
+        const finalConfirmation = this.messageView.confirmTransaction(transactionData);
+        await this.safeSendText(client, message.from, finalConfirmation);
+
+        // Salva a transação
+        const success = await this.saveTransaction(transactionData);
+        if (success) {
+            await this.safeSendText(client, message.from, "✅ Transação concluída com sucesso!");
+        } else {
+            await this.safeSendText(client, message.from, "❌ Ocorreu um erro ao salvar a transação.");
+        }
+
+        return true;
+    } catch (error) {
+        console.error("Erro ao confirmar transação:", error);
+        await this.safeSendText(
+            client, 
+            message.from, 
+            "❌ Erro ao processar transação. Tente novamente."
+        );
+        return false;
+    } finally {
+        this.pendingConfirmations.delete(context.phoneNumber);
+    }
+  } else {
+    await this.safeSendText(client, message.from, "❌ Operação cancelada.");
+    this.pendingConfirmations.delete(context.phoneNumber);
+    return false;
   }
+}
+
+
+private async saveTransaction(transactionData: {
+  value: string;
+  category: string;
+  contaBancariaSelecionada: IContaBancario;
+  type: string;
+  accountId: string | null;
+}) {
+  try {
+      // Salve os dados da transação no seu banco de dados ou onde for necessário
+      console.log("Salvando transação:", transactionData);
+
+      // Atualizar o saldo da conta bancária
+      if (transactionData.type === "income") {
+          this.ContaBancariaSelecionada.balance += parseFloat(transactionData.value);
+      } else if (transactionData.type === "expense") {
+          this.ContaBancariaSelecionada.balance -= parseFloat(transactionData.value);
+      }
+
+      // Aqui você pode chamar a função para salvar no seu banco de dados (Exemplo fictício)
+      // await this.transactionRepository.save(transactionData);
+      // await this.accountRepository.updateBalance(this.contaBancariaSelecionada);
+
+      // Retorna sucesso, ou alguma outra resposta
+      return true;
+  } catch (error) {
+      console.error("Erro ao salvar transação:", error);
+      return false;
+  }
+}
+
+
+
+
+
   private async safeSendText(
     client: Whatsapp,
     to: string,
@@ -307,41 +389,78 @@ export class MessageController {
     client: Whatsapp,
     context: MessageContext
   ): Promise<boolean> {
-    let selecionada = false;
-  
-    const conta = await AccountHandler.selectBankAccount(
-      context.phoneNumber,
-      message,
-      client,
-      this.ContaBancariaSelecionada,
-      (conta) => {
-        this.ContaBancariaSelecionada = conta;
-        selecionada = true;
-      }
-    );
-  
-    if (conta) {
-      this.ContaBancariaSelecionada = conta;
-      selecionada = true;
+    const contas = await AccountHandler.getBankAccounts();
+    console.log("CONTAAS", contas[0]);
+
+    if (contas.length === 1) {
+      return await this.autoSelectAccount(contas[0], message, client);
     }
-  
-    return selecionada;
+
+    return this.promptUserToSelectAccount(context.phoneNumber, message, client);
   }
 
-  private async processConfirmation(
+  private async autoSelectAccount(
+    conta: any,
     message: any,
-    client: Whatsapp,
-    context: MessageContext
-  ) {
-    const confirmationHandler = new ConfirmationHandler(
-      this.pendingConfirmations
-    );
-    return await confirmationHandler.handle(
-      context.phoneNumber,
-      message,
+    client: Whatsapp
+  ): Promise<boolean> {
+    this.ContaBancariaSelecionada = conta;
+    await this.safeSendText(
       client,
-      context
+      message.from,
+      `✅ Conta ${conta.nome} selecionada automaticamente.`
     );
+    return true;
+  }
+
+  private async promptUserToSelectAccount(
+    phoneNumber: string,
+    message: any,
+    client: Whatsapp
+  ): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.log("Tem  po de resposta expirado.");
+        resolve(false); // Fallback se o usuário não selecionar a conta a tempo
+      }, 3000); // 3 segundos de timeout
+
+      AccountHandler.selectBankAccount(
+        phoneNumber,
+        message,
+        client,
+        this.ContaBancariaSelecionada,
+        (contaSelecionada) => {
+          clearTimeout(timeout); // Limpa o timeout quando a conta for selecionada
+          console.log("Conta Selecionadaaaaaa: ", contaSelecionada); // Log de depuração
+          if (contaSelecionada) {
+            this.ContaBancariaSelecionada = contaSelecionada;
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        }
+      ).catch((error) => {
+        console.log("Erro ao selecionar a conta: ", error);
+        clearTimeout(timeout); // Limpa o timeout caso haja erro
+        resolve(false);
+      });
+    });
+  }
+
+  private async buildContext(message: any): Promise<MessageContext> {
+    const phoneNumber = extractPhoneNumber(message.from);
+    const user = await this.userModel.findByPhone(phoneNumber);
+    const authService = new AuthService();
+    const authData = await authService.login();
+    const userName = authData.user.name || "Usuário";
+    const validCategories = (authData.categories || []).map((cat: any) => ({
+      id: cat.id || "",
+      title: cat.title,
+      type: cat.type,
+      icon: cat.icon || "🎈",
+    }));
+
+    return { phoneNumber, user, userName, authData, validCategories };
   }
 }
 

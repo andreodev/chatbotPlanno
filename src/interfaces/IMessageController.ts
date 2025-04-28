@@ -12,4 +12,5 @@ export interface MessageContext {
   userName: string;
   authData: any;
   validCategories: Category[];
+  selectedBankAccount ?: any;
 }

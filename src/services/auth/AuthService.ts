@@ -21,7 +21,6 @@ class AuthService {
     });
 
     axios.interceptors.response.use((response) => {
-      console.log('📥 Recebida resposta com status:', response.status);
       return response;
     }, (error) => {
       console.error('🔴 Erro na requisição:', error.response?.status || error.message);
@@ -60,7 +59,6 @@ class AuthService {
     try {
       // Verifica se o token existe e é válido
       if (!this.authToken) {
-        console.log('🔐 Token não encontrado, realizando login...');
         await this.login();  // Faz o login se o token não estiver disponível
       }
   
@@ -83,12 +81,6 @@ class AuthService {
   }
 
   private logAuthData(data: AuthResponse) {
-    console.log('✅ Login bem-sucedido!');
-    console.log('👤 Usuário:', {
-      id: data.token,
-      name: data.user.name,
-      email: data.user.email
-    });
   }
 
   private handleAuthError(error: unknown) {

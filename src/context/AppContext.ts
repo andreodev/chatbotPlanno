@@ -18,14 +18,7 @@ class AppContext {
 
   public async getAuthData(): Promise<AuthResponse> {
     if (!this.authData) {
-      console.log("🔍 Iniciando processo de login...");
       this.authData = await new AuthService().login();
-      console.log("✅ Login bem-sucedido!");
-      console.log("👤 Usuário:", {
-        id: this.authData.user.id,
-        name: this.authData.user.name,
-        email: this.authData.user.email
-      });
     }
     return this.authData;
   }

@@ -1,4 +1,3 @@
-// AccountSelectionHandler.ts
 import type { Message, Whatsapp } from "venom-bot";
 import type { IContaBancario } from "../interfaces/IContaBancaria";
 
@@ -24,23 +23,23 @@ export class AccountSelectionHandler {
     client,
     contas,
     onSelect,
-  }: AccountSelectionParams): Promise<boolean> {
+  }: AccountSelectionParams): Promise<IContaBancario | null> {
     const response = message.body.trim();
     const selectedIndex = parseInt(response);
 
     if (!isNaN(selectedIndex) && selectedIndex >= 1 && selectedIndex <= contas.length) {
       const contaSelecionada = contas[selectedIndex - 1];
       await onSelect(contaSelecionada);
-      return true;
+      return contaSelecionada; // Retorna a conta selecionada
     } else {
       const listaContasFormatada = contas
-      .map((conta, index) => `${index + 1}. ${conta.name}`)
-      .join('\n');
+        .map((conta, index) => `${index + 1}. ${conta.name}`)
+        .join('\n');
       await client.sendText(
         message.from,
         `💳 *Selecione uma Conta Bancária*\n\n${listaContasFormatada}\n\nResponda com o número da conta que deseja usar.`
       );
-      return true;
+      return null; // Retorna null se a seleção for inválida
     }
   }
 }

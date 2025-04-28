@@ -1,11 +1,17 @@
 import axios from "axios";
-import stringSimilarity from 'string-similarity';
+import stringSimilarity from "string-similarity";
 import { DEEPSEEK_CONFIG } from "../config/deepseek";
 import AuthService from "./auth/AuthService";
 
-
 export interface DeepSeekResponse {
-  type: "form" | "message" | "error" | "invalid_category" | "similar_categories";
+  type:
+    | "form"
+    | "message"
+    | "error"
+    | "invalid_category"
+    | "similar_categories"
+    | "confirm_transaction"
+    | "cancel_transaction";
   data?: {
     value: string;
     category: string;
@@ -30,8 +36,11 @@ class DeepSeekService {
 
   private async getAuthData() {
     const CACHE_TIME = 5 * 60 * 1000; // 5 minutos de cache
-    
-    if (this.authDataCache && (Date.now() - this.authDataCache.timestamp) < CACHE_TIME) {
+
+    if (
+      this.authDataCache &&
+      Date.now() - this.authDataCache.timestamp < CACHE_TIME
+    ) {
       return this.authDataCache.data;
     }
 
@@ -39,9 +48,9 @@ class DeepSeekService {
     const authData = await authService.login();
     this.authDataCache = {
       data: authData,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     return authData;
   }
 
@@ -53,64 +62,75 @@ class DeepSeekService {
       .replace(/[^\w\s]/gi, "") // remove emojis e caracteres especiais
       .trim();
   }
-  
 
-  private validateCategory(inputCategory: string, validCategories: any[]): {
+  private validateCategory(
+    inputCategory: string,
+    validCategories: any[]
+  ): {
     isValid: boolean;
     suggestions: string[];
     exactMatch: boolean;
   } {
     const normalizedInput = this.normalizeInput(inputCategory);
-  
+
     const exactMatch = validCategories.some(
-      c => this.normalizeInput(c.title) === normalizedInput
+      (c) => this.normalizeInput(c.title) === normalizedInput
     );
-  
+
     if (exactMatch) {
       return {
         isValid: true,
         suggestions: [],
-        exactMatch: true
+        exactMatch: true,
       };
     }
-  
-    const { matches } = this.findSimilarCategories(normalizedInput, validCategories);
-  
+
+    const { matches } = this.findSimilarCategories(
+      normalizedInput,
+      validCategories
+    );
+
     return {
       isValid: matches.length > 0,
       suggestions: matches,
-      exactMatch: false
+      exactMatch: false,
     };
   }
-  
 
-  
-  private findSimilarCategories(input: string, categories: any[]): {
+  private findSimilarCategories(
+    input: string,
+    categories: any[]
+  ): {
     matches: string[];
   } {
-    const titles = categories.map(c => c.title);
+    const titles = categories.map((c) => c.title);
     const normalizedTitles = titles.map(this.normalizeInput.bind(this));
-  
-    const similarities = stringSimilarity.findBestMatch(input, normalizedTitles);
-  
+
+    const similarities = stringSimilarity.findBestMatch(
+      input,
+      normalizedTitles
+    );
+
     const threshold = 0.4;
-  
+
     const matches = similarities.ratings
       .map((r, i) => ({ ...r, original: titles[i] })) // guarda título original
-      .filter(r => r.rating >= threshold)
+      .filter((r) => r.rating >= threshold)
       .sort((a, b) => b.rating - a.rating)
-      .map(r => r.original);
-  
+      .map((r) => r.original);
+
     return { matches };
   }
-  
-  
 
-  async generateFormattedResponse(userMessage: string): Promise<DeepSeekResponse> {
+  async generateFormattedResponse(
+    userMessage: string
+  ): Promise<DeepSeekResponse> {
     const authData = await this.getAuthData();
     const userCategories = authData.categories || [];
 
-    const systemPrompt: string = `Você é o Plannito🤖, assistente financeiro especializado no app Planno (disponível em: https://play.google.com/store/apps/details?id=br.com.breaklabs.plano). Siga À RISCA:
+    const systemPrompt: string = `Você é o Plannito🤖, assistente financeiro especializado no app Planno 
+    (disponível em: https://play.google.com/store/apps/details?id=br.com.breaklabs.plano). 
+    Siga À RISCA:
 
     1. 🟢 SUA IDENTIDADE:
   - Só conhece o Planno (nunca mencione outros apps)
@@ -119,7 +139,12 @@ class DeepSeekService {
 
     2. 📋 REGRAS DE CATEGORIAS:
   - USE APENAS ESTAS CATEGORIAS VÁLIDAS:
-  ${userCategories.map((c: { title: string; type: string }) => `• ${c.title} ${c.type === 'income' ? '📈' : '📉'}`).join('\n')}
+  ${userCategories
+    .map(
+      (c: { title: string; type: string }) =>
+        `• ${c.title} ${c.type === "income" ? "📈" : "📉"}`
+    )
+    .join("\n")}
 
     3. PARA REGISTROS FINANCEIROS:
     - Extraia valor (ex: R$ 50,00 → "50.00")
@@ -135,8 +160,11 @@ class DeepSeekService {
 
 5. 🔄 FLUXO PARA CATEGORIAS INVÁLIDAS:
 1. Informe "Esta categoria não existe"
-2. Mostre a lista de categorias válidas
-3. Pergunte: "Deseja criar a categoria X? (Sim/Não)"
+2. PEGUE O VALOR DA CATEGORIA E TENTE ACHAR ALGO PRÓXIMO A ELA DENTRO DAS CATEGORIAS
+3. Mostre a lista de categorias válidas
+4. Pergunte: "Deseja criar a categoria X? (Sim/Não)"
+
+7."Se a mensagem representar uma transação financeira (como gasto, transferência ou pagamento), retorne needsBankAccount: true. Caso contrário, false. Baseie-se no contexto da mensagem do usuário."
 
      FORMATO DA RESPOSTA (JSON):
     {
@@ -154,23 +182,25 @@ class DeepSeekService {
           model: DEEPSEEK_CONFIG.DEFAULT_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage }
+            { role: "user", content: userMessage },
           ],
           response_format: { type: "json_object" },
-          temperature: 0.3
+          temperature: 0.3,
         },
-        { 
+        {
           headers: this.headers,
-          timeout: 15000 // 15 segundos de timeout
+          timeout: 15000, // 15 segundos de timeout
         }
       );
 
-      const parsedResponse = JSON.parse(response.data.choices[0].message.content);
+      const parsedResponse = JSON.parse(
+        response.data.choices[0].message.content
+      );
 
       // Validação adicional no servidor
       if (parsedResponse.type === "form") {
         const validation = this.validateCategory(
-          parsedResponse.data.category, 
+          parsedResponse.data.category,
           userCategories
         );
 
@@ -181,13 +211,17 @@ class DeepSeekService {
               content: `🔍 Categoria "${parsedResponse.data.category}" não encontrada.`,
               suggestions: validation.suggestions,
               originalCategory: parsedResponse.data.category,
-              validCategories: userCategories.map((c: { title: string }) => c.title)
+              validCategories: userCategories.map(
+                (c: { title: string }) => c.title
+              ),
             };
           } else {
             return {
               type: "invalid_category",
               content: `⚠️ Categoria "${parsedResponse.data.category}" não existe.`,
-              validCategories: userCategories.map((c: { title: string }) => c.title)
+              validCategories: userCategories.map(
+                (c: { title: string }) => c.title
+              ),
             };
           }
         }
@@ -198,14 +232,57 @@ class DeepSeekService {
       console.error("Erro no DeepSeek:", {
         message: error.message,
         response: error.response?.data,
-        stack: error.stack
+        stack: error.stack,
       });
 
       return {
         type: "error",
-        content: "🔧 Estou com problemas técnicos. Por favor, tente novamente mais tarde."
+        content:
+          "🔧 Estou com problemas técnicos. Por favor, tente novamente mais tarde.",
       };
     }
+  }
+  public async analyzeConfirmationResponse(
+    userMessage: string
+  ): Promise<DeepSeekResponse> {
+    const normalized = this.normalizeInput(userMessage);
+    const positiveResponses = [
+      "sim",
+      "s",
+      "yes",
+      "y",
+      "confirmo",
+      "confirmar",
+      "confirmar transação",
+    ];
+    const negativeResponses = [
+      "não",
+      "nao",
+      "n",
+      "no",
+      "cancelar",
+      "cancelar transação",
+    ];
+
+    if (positiveResponses.some((r) => normalized.includes(r))) {
+      return {
+        type: "confirm_transaction",
+        content: "Confirmação recebida",
+      };
+    }
+
+    if (negativeResponses.some((r) => normalized.includes(r))) {
+      return {
+        type: "cancel_transaction",
+        content: "Confirmação negada",
+      };
+    }
+
+    return {
+      type: "error",
+      content:
+        "Não entendi sua resposta. Por favor, responda 'Sim' para confirmar ou 'Não' para cancelar.",
+    };
   }
 }
 

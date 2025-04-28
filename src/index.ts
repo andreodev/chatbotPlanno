@@ -46,14 +46,9 @@ function start(client: Whatsapp, messageController: MessageController) {
   client.onMessage(async (message) => {
     try {
       if (!message.body) {
-        return console.warn('Empty message received', message);
+        return console.warn('Empty message received');
       }
-      
-      console.log('Processing message:', {
-        from: message.from,
-        body: message.body.substring(0, 100) 
-      });
-  
+
       await messageController.handleIncomingMessage(message, client);
     } catch (error) {
       if (error instanceof Error) {
