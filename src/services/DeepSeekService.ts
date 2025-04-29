@@ -21,6 +21,7 @@ export interface DeepSeekResponse {
   validCategories?: string[];
   suggestions?: string[];
   originalCategory?: string;
+  intent?: string;
 }
 
 class DeepSeekService {
@@ -162,9 +163,7 @@ class DeepSeekService {
 1. Informe "Esta categoria não existe"
 2. PEGUE O VALOR DA CATEGORIA E TENTE ACHAR ALGO PRÓXIMO A ELA DENTRO DAS CATEGORIAS
 3. Mostre a lista de categorias válidas
-4. Pergunte: "Deseja criar a categoria X? (Sim/Não)"
-
-7."Se a mensagem representar uma transação financeira (como gasto, transferência ou pagamento), retorne needsBankAccount: true. Caso contrário, false. Baseie-se no contexto da mensagem do usuário."
+4."Se a mensagem representar uma transação financeira (como gasto, transferência ou pagamento), retorne needsBankAccount: true. Caso contrário, false. Baseie-se no contexto da mensagem do usuário."
 
      FORMATO DA RESPOSTA (JSON):
     {

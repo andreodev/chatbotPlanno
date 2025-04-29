@@ -149,17 +149,25 @@ class MessageView {
     category: string;
     contaBancariaSelecionada: IContaBancario;
     type: string;
-}): string {
+  }): string {
     // Validação adicional para tipo inconsistente
-    const isIncomeCategory = ["salário", "rendimento"].includes(data.category.toLowerCase());
+    console.log('Tipo antes do envio:', data.type);
+    const isIncomeCategory = ["salário", "rendimento"].includes(
+      data.category.toLowerCase()
+    );
     if (isIncomeCategory && data.type === "expense") {
-        console.warn("Aviso: Tipo inconsistente para categoria de receita");
-        data.type = "income"; // Auto-correção
+      console.warn("Aviso: Tipo inconsistente para categoria de receita");
+      data.type = "income"; // Auto-correção
     }
 
     // Restante da validação original...
-    if (!data.value || !data.category || !data.contaBancariaSelecionada || !data.type) {
-        return "❌ Não foi possível confirmar a transação. Dados incompletos.";
+    if (
+      !data.value ||
+      !data.category ||
+      !data.contaBancariaSelecionada ||
+      !data.type
+    ) {
+      return "❌ Não foi possível confirmar a transação. Dados incompletos.";
     }
 
     return (
@@ -170,7 +178,6 @@ class MessageView {
       `▸ *Tipo:* ${data.type === "income" ? "📥 Entrada" : "📤 Saída"}\n\n` +
       `Se tudo estiver correto, confirme com *Sim* ou cancele com *Não*.`
     );
-
   }
 
   public transactionCreatedMessage(data: {
@@ -179,6 +186,15 @@ class MessageView {
     type: string;
     contaBancariaSelecionada: IContaBancario;
   }): string {
+
+    console.log('Tipo antes do envio:', data.type);
+    const isIncomeCategory = ["salário", "rendimento"].includes(
+      data.category.toLowerCase()
+    );
+    if (isIncomeCategory && data.type === "expense") {
+      console.warn("Aviso: Tipo inconsistente para categoria de receita");
+      data.type = "income"; // Auto-correção
+    }
     // Verificação de dados essenciais
     if (
       !data.value ||
@@ -207,7 +223,7 @@ class MessageView {
         .map((c) => `• ${c.title} ${c.type === "expense" ? "📉" : "📈"}`)
         .join("\n");
 
-    let message = `📋 *Categorias Disponíveis no Planno* 📋\n\n`;
+    let message = `📂 *Suas categorias:*\n\n`;
 
     message += `📉 *Despesas:*\n${formatCategoryList(expenses)}\n\n`;
     message += `📈 *Receitas:*\n${formatCategoryList(incomes)}\n\n`;

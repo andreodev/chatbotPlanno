@@ -53,16 +53,20 @@ export class MessageController {
   public async handleIncomingMessage(message: any, client: Whatsapp) {
     try {
       const context = await this.buildContext(message);
-
+  
+      if (await this.processCategoryRequest(message, client, context)) return;
       if (await this.processGreeting(message, client, context)) return;
+  
       const contaSelecionada = await this.processAccountSelection(
         message,
         client,
         context
       );
       if (contaSelecionada) return;
+  
       if (await this.processTransactionConfirmation(message, client, context))
-        return; // Nova linha
+        return;
+  
       await this.handleWithDeepSeek(message, client, context);
     } catch (error) {
       this.handleError(error, message, client);
@@ -266,6 +270,13 @@ export class MessageController {
             message.from,
             "✅ Transação concluída com sucesso!"
           );
+        
+          // 🔁 Resetar estado
+          this.ContaBancariaSelecionada = null;
+          this.isPromptMessageSent = false;
+          this.pendingConfirmations.delete(context.phoneNumber);
+        
+          return true;
         } else {
           await this.safeSendText(
             client,
@@ -378,22 +389,34 @@ export class MessageController {
     client: Whatsapp,
     context: MessageContext
   ): Promise<boolean> {
+    // ✅ 1. Já tem conta selecionada? Não faz mais nada
+    if (this.ContaBancariaSelecionada) {
+      console.log("✅ Conta já selecionada, pulando seleção.");
+      return false;
+    }
+  
+    // ✅ 2. Se só há uma conta, seleciona automaticamente
     const contas = await AccountHandler.getBankAccounts();
     console.log("Contas disponíveis:", contas);
   
     if (contas.length === 1) {
       await this.autoSelectAccount(contas[0], message, client);
-      return false; // 👈 NÃO retorna true, pra continuar o fluxo
+      return false; // Continua o fluxo
     }
   
-    const contaSelecionada = await this.promptUserToSelectAccount(context.phoneNumber, message, client);
+    // ✅ 3. Senão, pede para o usuário selecionar
+    const contaSelecionada = await this.promptUserToSelectAccount(
+      context.phoneNumber,
+      message,
+      client
+    );
   
     if (contaSelecionada) {
       this.setSelectedContaBancaria(contaSelecionada);
-      return true; // Aqui sim retorna true (esperar confirmação)
+      return true; // Interrompe pra esperar confirmação
     }
   
-    return false; // Timeout expirado ou erro
+    return false; // Timeout ou erro
   }
 
   private isAutoMessageSent: boolean = false;
@@ -432,7 +455,7 @@ export class MessageController {
       const timeout = setTimeout(() => {
         console.log("⏳ Tempo de resposta expirado.");
         resolve(null); // Quando der timeout, retorna NULL
-      }, 30000); // 30 segundos
+      }, 5000); // 30 segundos
   
       // Verifica se a mensagem já foi enviada
       if (!this.isPromptMessageSent) {
@@ -482,6 +505,27 @@ export class MessageController {
     }));
 
     return { phoneNumber, user, userName, authData, validCategories };
+  }
+
+  private async processCategoryRequest(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
+    const input = message.body.toLowerCase().trim();
+  
+    if (input === "minhas categorias" || input === "categorias" || input === "listar categorias" || input === "quais são minhas categorias" || input === "traga minhas categorias" || input === "quais é as categorias" || input === "quais minhas categorias") {
+      const categories = context.validCategories;
+  
+      if (!categories || categories.length === 0) {
+        await this.safeSendText(client, message.from, "😕 Você ainda não tem categorias cadastradas.");
+        return true;
+      }
+  
+      // Chama o método que você já tem para formatar a mensagem
+      const response = this.messageView.listAllCategories(categories);
+  
+      await this.safeSendText(client, message.from, response);
+      return true;
+    }
+  
+    return false;
   }
 }
 
