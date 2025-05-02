@@ -30,6 +30,7 @@ class AuthService {
 
   public async login(): Promise<AuthResponse> {
     console.log('🔍 Iniciando processo de login...');
+
     
     try {
       if (!this.API_URL) {

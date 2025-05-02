@@ -54,10 +54,6 @@ export class DeepSeekHandler {
       return client.sendText(message.from, text);
     }
 
-    if (this.isAddCategoryRequest(messageBody)) {
-      const text = this.view.getCategoryHelpMessage(context.validCategories);
-      return client.sendText(message.from, text);
-    }
 
     const aiResponse = await deepseekService.generateFormattedResponse(message.body);
 

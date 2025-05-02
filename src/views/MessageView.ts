@@ -223,12 +223,11 @@ class MessageView {
         .map((c) => `• ${c.title} ${c.type === "expense" ? "📉" : "📈"}`)
         .join("\n");
 
+
     let message = `📂 *Suas categorias:*\n\n`;
 
     message += `📉 *Despesas:*\n${formatCategoryList(expenses)}\n\n`;
     message += `📈 *Receitas:*\n${formatCategoryList(incomes)}\n\n`;
-    message += `💡 Você pode usar qualquer uma dessas categorias para registrar seus gastos ou receitas.\n`;
-    message += `Exemplo: "Gastei 50 reais em Transporte"`;
 
     return message;
   }

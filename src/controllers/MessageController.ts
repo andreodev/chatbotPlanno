@@ -54,24 +54,35 @@ export class MessageController {
     try {
       const context = await this.buildContext(message);
   
-      if (await this.processCategoryRequest(message, client, context)) return;
-      if (await this.processGreeting(message, client, context)) return;
+      // 👉 Trata comandos diretos antes de usar IA
+      const handled = await this.executeHandlersInOrder(message, client, context);
+      if (handled) return;
   
-      const contaSelecionada = await this.processAccountSelection(
-        message,
-        client,
-        context
-      );
-      if (contaSelecionada) return;
-  
-      if (await this.processTransactionConfirmation(message, client, context))
-        return;
-  
+      // 🤖 Se nenhum handler direto tratou, usa IA
       await this.handleWithDeepSeek(message, client, context);
     } catch (error) {
       this.handleError(error, message, client);
     }
   }
+  
+  // Executa os handlers na ordem definida
+  private async executeHandlersInOrder(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
+    const handlers = [
+      this.processCategoryRequest.bind(this),
+      this.processGreeting.bind(this),
+      this.processAccountTotal.bind(this),
+      this.processAccountSelection.bind(this),
+      this.processTransactionConfirmation.bind(this)
+    ];
+  
+    for (const handler of handlers) {
+      const result = await handler(message, client, context);
+      if (result) return true;
+    }
+  
+    return false;
+  }
+  
 
   private async findBestCategoryMatch(
     categoryName: string,
@@ -509,8 +520,19 @@ export class MessageController {
 
   private async processCategoryRequest(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
     const input = message.body.toLowerCase().trim();
+
+    
+    const keywords = [
+      "minhas categorias",
+      "categorias",
+      "listar categorias",
+      "quais são minhas categorias",
+      "traga minhas categorias",
+      "quais é as categorias",
+      "quais minhas categorias"
+    ];
   
-    if (input === "minhas categorias" || input === "categorias" || input === "listar categorias" || input === "quais são minhas categorias" || input === "traga minhas categorias" || input === "quais é as categorias" || input === "quais minhas categorias") {
+    if (keywords.includes(input)) {
       const categories = context.validCategories;
   
       if (!categories || categories.length === 0) {
@@ -518,10 +540,18 @@ export class MessageController {
         return true;
       }
   
-      // Chama o método que você já tem para formatar a mensagem
+      // Use seu visualizador formatado
       const response = this.messageView.listAllCategories(categories);
-  
       await this.safeSendText(client, message.from, response);
+      return true;
+    }
+  
+    return false;
+  }
+  private async processAccountTotal(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
+  
+    if (message.body?.toLowerCase() === "teste") {
+      console.log("✅ caiu aqui");
       return true;
     }
   

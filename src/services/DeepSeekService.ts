@@ -167,7 +167,7 @@ class DeepSeekService {
 
      FORMATO DA RESPOSTA (JSON):
     {
-    "type": "form"|"message"|"invalid_category"|"similar_categories",
+    "type": "form"|"message"|"invalid_category"|"similar_categories| categories",
     "data?": {"value": string, "category": string},
     "content?": string,
     "suggestions?": string[],
