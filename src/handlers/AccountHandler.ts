@@ -2,6 +2,7 @@ import { Whatsapp } from "venom-bot";
 import { AccountSelectionHandler } from "./AccountSelectionHandler";
 import type { IContaBancario } from "../interfaces/IContaBancaria";
 import AuthService from "../services/auth/AuthService";
+import selectAccountStore from "../global/selectAccountStore";
 
 export class AccountHandler {
   static async selectBankAccount(
@@ -16,6 +17,8 @@ export class AccountHandler {
       const authService = new AuthService();
       const responseAccount = await authService.SearchAccounts();
       const contasEncontradas: IContaBancario[] = responseAccount?.data || [];
+
+      console.log("testeee: ", contasEncontradas)
 
       // Verifique se existem contas
       if (contasEncontradas.length === 0) {
@@ -35,8 +38,9 @@ export class AccountHandler {
           phoneNumber,
           contas: contasEncontradas,
           onSelect: async (conta: IContaBancario) => {
-            console.log("Conta selecionada:", conta); // Log para verificar se a conta está sendo selecionada
-            setContaSelecionada(conta); // Atualiza a conta selecionada
+            console.log("Conta selecionada:", conta);
+            setContaSelecionada(conta); // local (opcional)
+            selectAccountStore.set(phoneNumber, conta); // ← ESSA LINHA É ESSENCIAL
             await client.sendText(
               message.from,
               `✅ Conta selecionada: *${conta.name}*`
@@ -44,7 +48,6 @@ export class AccountHandler {
           },
         });
 
-        console.log("Conta selecionada no handle:", contaSelecionada); // Verifique o retorno da função
 
         // Verifica se uma conta foi selecionada
         if (contaSelecionada) {
@@ -55,7 +58,8 @@ export class AccountHandler {
       } else if (contasEncontradas.length === 1) {
         // Caso o usuário tenha apenas uma conta
         const contaUnica = contasEncontradas[0];
-        setContaSelecionada(contaUnica); // Atualiza a conta
+        setContaSelecionada(contaUnica); // opcional
+        selectAccountStore.set(phoneNumber, contaUnica); // ← salva no store global
         await client.sendText(
           message.from,
           `✅ Você só possui uma conta: *${contaUnica.name}*`

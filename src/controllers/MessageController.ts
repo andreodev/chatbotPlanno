@@ -7,8 +7,12 @@ import { Whatsapp } from "venom-bot";
 import AuthService from "../services/auth/AuthService";
 import { Category } from "../models/Category";
 import type { IContaBancario } from "../interfaces/IContaBancaria";
-import { GreetingHandler } from "../handlers/GreetingHandler";
-import { AccountHandler } from "../handlers/AccountHandler";
+import { CategoryHandler } from "../handlers/CategoryHandler";
+import { AccountTotalProcess } from "../handlers/AccountTotalProcess";
+import { ProcessGreeting } from "../handlers/ProcessGreeting";
+import { ProcessAccountSelection } from "../handlers/ProcessAccountSelection";
+import { TransactionWithCategory } from "../handlers/TransactionWithCategory";
+import { ProcessTransactionConfirmation } from "../handlers/ProcessTransactionConfirmation";
 
 interface MessageContext {
   phoneNumber: string;
@@ -30,18 +34,6 @@ export class MessageController {
   private ContaBancariaSelecionada: IContaBancario | any = null;
   private ListaContaBancaria: IContaBancario[] | any = null;
   private messageView: MessageView;
-  private greetings = [
-    "oi",
-    "olá",
-    "ola",
-    "eae",
-    "e aí",
-    "hello",
-    "hi",
-    "bom dia",
-    "boa tarde",
-    "boa noite",
-  ];
   private pendingConfirmations: Map<string, PendingConfirmation>;
 
   constructor() {
@@ -53,36 +45,51 @@ export class MessageController {
   public async handleIncomingMessage(message: any, client: Whatsapp) {
     try {
       const context = await this.buildContext(message);
-  
+
       // 👉 Trata comandos diretos antes de usar IA
-      const handled = await this.executeHandlersInOrder(message, client, context);
+      const handled = await this.executeHandlersInOrder(
+        message,
+        client,
+        context
+      );
       if (handled) return;
-  
+
       // 🤖 Se nenhum handler direto tratou, usa IA
       await this.handleWithDeepSeek(message, client, context);
     } catch (error) {
       this.handleError(error, message, client);
     }
   }
-  
+
   // Executa os handlers na ordem definida
-  private async executeHandlersInOrder(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
+  private async executeHandlersInOrder(
+    message: any,
+    client: Whatsapp,
+    context: MessageContext
+  ): Promise<boolean> {
+    const categoryHandler = new CategoryHandler(new MessageView());
+    const accountTotalProcess = new AccountTotalProcess();
+    const processGreeting = new ProcessGreeting(new MessageView());
+    const accountSelection = new ProcessAccountSelection();
+    const processTransactionConfirmation = new ProcessTransactionConfirmation();
+
     const handlers = [
-      this.processCategoryRequest.bind(this),
-      this.processGreeting.bind(this),
-      this.processAccountTotal.bind(this),
-      this.processAccountSelection.bind(this),
-      this.processTransactionConfirmation.bind(this)
+      categoryHandler.handle.bind(categoryHandler), //responsavel pelas categorias
+      processGreeting.processGreeting.bind(processGreeting), // responsavel pela recepção
+      accountTotalProcess.processAccountTotal.bind(accountTotalProcess), //responsavel por mostrar a mensagem de total
+      accountSelection.processAccountSelection.bind(accountSelection),
+      processTransactionConfirmation.processTransactionConfirmation.bind(
+        processTransactionConfirmation
+      ), //responsavel pela transação
     ];
-  
+
     for (const handler of handlers) {
       const result = await handler(message, client, context);
       if (result) return true;
     }
-  
+
     return false;
   }
-  
 
   private async findBestCategoryMatch(
     categoryName: string,
@@ -142,23 +149,31 @@ export class MessageController {
       message.body
     );
 
+    if (!aiResponse || !aiResponse.data) {
+      const response =
+        "❌ Não conseguimos processar sua mensagem corretamente. Por favor, tente novamente.";
+      return this.safeSendText(client, message.from, response);
+    }
+
     console.log("AI RESPONSE DATA", aiResponse);
-    if (aiResponse.data?.category) {
-      return this.handleTransactionWithCategory(
+    const transactionWithCategory = new TransactionWithCategory();
+
+    // Verifica se aiResponse.data e aiResponse.data.category estão presentes
+    if (aiResponse?.data?.category) {
+      console.log("Categoria encontrada:", aiResponse.data.category);
+      return transactionWithCategory.handleTransactionWithCategory(
         message,
         client,
         context,
         aiResponse
       );
+    } else {
+      console.log("Categoria não encontrada no AI Response");
+      const response =
+        "❌ Não conseguimos identificar a categoria. Por favor, tente novamente.";
+      return this.safeSendText(client, message.from, response);
     }
-
-    return this.safeSendText(
-      client,
-      message.from,
-      aiResponse.content || "🤖 Resposta padrão"
-    );
   }
-
 
   private async handleTransactionWithCategory(
     message: any,
@@ -229,126 +244,6 @@ export class MessageController {
   }
 
   // Adicione este método no MessageController para processar a resposta "sim"
-
-  private async processTransactionConfirmation(
-    message: any,
-    client: Whatsapp,
-    context: MessageContext
-  ) {
-    const confirmation = this.pendingConfirmations.get(context.phoneNumber);
-    if (!confirmation || confirmation.type !== "transaction") return false;
-
-    const response = message.body.toLowerCase().trim();
-    if (response === "sim" || response === "s") {
-      // Verifica se todos os dados necessários estão presentes
-      if (
-        !confirmation.data.originalData?.value ||
-        !confirmation.data.originalData?.category ||
-        !this.ContaBancariaSelecionada ||
-        !confirmation.data.originalData?.type
-      ) {
-        await this.safeSendText(
-          client,
-          message.from,
-          "❌ Dados incompletos para confirmar a transação. Por favor, inicie novamente."
-        );
-        this.pendingConfirmations.delete(context.phoneNumber);
-        return false;
-      }
-
-      // Prepara os dados garantindo que todos os campos existam
-      const transactionData = {
-        value: confirmation.data.originalData.value.toString(),
-        category: confirmation.data.originalData.category,
-        contaBancariaSelecionada: this.ContaBancariaSelecionada,
-        type: confirmation.data.originalData.type,
-        accountId: this.ContaBancariaSelecionada.idSync || null,
-      };
-
-      console.log(transactionData);
-
-      try {
-        // Mostra a confirmação final
-        const finalConfirmation =
-          this.messageView.transactionCreatedMessage(transactionData);
-        await this.safeSendText(client, message.from, finalConfirmation);
-
-        // Salva a transação
-        const success = await this.saveTransaction(transactionData);
-        if (success) {
-          await this.safeSendText(
-            client,
-            message.from,
-            "✅ Transação concluída com sucesso!"
-          );
-        
-          // 🔁 Resetar estado
-          this.ContaBancariaSelecionada = null;
-          this.isPromptMessageSent = false;
-          this.pendingConfirmations.delete(context.phoneNumber);
-        
-          return true;
-        } else {
-          await this.safeSendText(
-            client,
-            message.from,
-            "❌ Ocorreu um erro ao salvar a transação."
-          );
-        }
-
-        return true;
-      } catch (error) {
-        console.error("Erro ao confirmar transação:", error);
-        await this.safeSendText(
-          client,
-          message.from,
-          "❌ Erro ao processar transação. Tente novamente."
-        );
-        return false;
-      } finally {
-        this.pendingConfirmations.delete(context.phoneNumber);
-      }
-    } else {
-      await this.safeSendText(client, message.from, "❌ Operação cancelada.");
-      this.pendingConfirmations.delete(context.phoneNumber);
-      return false;
-    }
-  }
-
-  private async saveTransaction(transactionData: {
-    value: string;
-    category: string;
-    contaBancariaSelecionada: IContaBancario;
-    type: string;
-    accountId: string | null;
-  }) {
-    try {
-      // Salve os dados da transação no seu banco de dados ou onde for necessário
-      console.log("Salvando transação:", transactionData);
-
-      // Atualizar o saldo da conta bancária
-      if (transactionData.type === "income") {
-        this.ContaBancariaSelecionada.balance += parseFloat(
-          transactionData.value
-        );
-      } else if (transactionData.type === "expense") {
-        this.ContaBancariaSelecionada.balance -= parseFloat(
-          transactionData.value
-        );
-      }
-
-      // Aqui você pode chamar a função para salvar no seu banco de dados (Exemplo fictício)
-      // await this.transactionRepository.save(transactionData);
-      // await this.accountRepository.updateBalance(this.contaBancariaSelecionada);
-
-      // Retorna sucesso, ou alguma outra resposta
-      return true;
-    } catch (error) {
-      console.error("Erro ao salvar transação:", error);
-      return false;
-    }
-  }
-
   private async safeSendText(
     client: Whatsapp,
     to: string,
@@ -380,128 +275,6 @@ export class MessageController {
     this.safeSendText(client, message.from, fallbackError);
   }
 
-  private async processGreeting(
-    message: any,
-    client: Whatsapp,
-    context: MessageContext
-  ) {
-    if (GreetingHandler.isGreeting(message.body)) {
-      const greetingResponse = await this.messageView.getGreetingMessage(
-        context.userName
-      );
-      await this.safeSendText(client, message.from, greetingResponse);
-      return true;
-    }
-    return false;
-  }
-
-  private async processAccountSelection(
-    message: any,
-    client: Whatsapp,
-    context: MessageContext
-  ): Promise<boolean> {
-    // ✅ 1. Já tem conta selecionada? Não faz mais nada
-    if (this.ContaBancariaSelecionada) {
-      console.log("✅ Conta já selecionada, pulando seleção.");
-      return false;
-    }
-  
-    // ✅ 2. Se só há uma conta, seleciona automaticamente
-    const contas = await AccountHandler.getBankAccounts();
-    console.log("Contas disponíveis:", contas);
-  
-    if (contas.length === 1) {
-      await this.autoSelectAccount(contas[0], message, client);
-      return false; // Continua o fluxo
-    }
-  
-    // ✅ 3. Senão, pede para o usuário selecionar
-    const contaSelecionada = await this.promptUserToSelectAccount(
-      context.phoneNumber,
-      message,
-      client
-    );
-  
-    if (contaSelecionada) {
-      this.setSelectedContaBancaria(contaSelecionada);
-      return true; // Interrompe pra esperar confirmação
-    }
-  
-    return false; // Timeout ou erro
-  }
-
-  private isAutoMessageSent: boolean = false;
-
-  private async autoSelectAccount(
-    conta: any,
-    message: any,
-    client: Whatsapp
-  ): Promise<boolean> {
-    this.setSelectedContaBancaria(conta);
-  
-    // Verifica se a mensagem já foi enviada
-    if (!this.isAutoMessageSent) {
-      // Envia a mensagem de conta selecionada automaticamente
-      await this.safeSendText(
-        client,
-        message.from,
-        `✅ Conta ${conta.name} selecionada automaticamente.`
-      );
-      
-      // Marca a mensagem como enviada
-      this.isAutoMessageSent = true;
-    }
-  
-    return true;
-  }
-
-  private isPromptMessageSent: boolean = false; // Flag para controlar se a mensagem foi enviada
-
-  private async promptUserToSelectAccount(
-    phoneNumber: string,
-    message: any,
-    client: Whatsapp
-  ): Promise<IContaBancario | null> {
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log("⏳ Tempo de resposta expirado.");
-        resolve(null); // Quando der timeout, retorna NULL
-      }, 5000); // 30 segundos
-  
-      // Verifica se a mensagem já foi enviada
-      if (!this.isPromptMessageSent) {
-        // Envia a mensagem solicitando a seleção de conta
-        const promptMessage = "Por favor, selecione a conta bancária.";
-        this.safeSendText(client, message.from, promptMessage);
-        this.isPromptMessageSent = true; // Marca a mensagem como enviada
-      }
-  
-      AccountHandler.selectBankAccount(
-        phoneNumber,
-        message,
-        client,
-        null, // não passa conta inicialmente
-        (contaSelecionada: IContaBancario | null) => {
-          clearTimeout(timeout);
-  
-          if (contaSelecionada) {
-            this.setSelectedContaBancaria(contaSelecionada);
-            this.isPromptMessageSent = false; // Reinicializa a flag após seleção
-            resolve(contaSelecionada); // Retorna a conta selecionada
-          } else {
-            this.isPromptMessageSent = false; // Reinicializa a flag caso o usuário não selecione
-            resolve(null); // Se não escolher nada, retorna NULL
-          }
-        }
-      ).catch((error: any) => {
-        console.log("Erro ao selecionar conta:", error);
-        clearTimeout(timeout);
-        this.isPromptMessageSent = false; // Reinicializa a flag em caso de erro
-        resolve(null); // Em caso de erro, também retorna NULL
-      });
-    });
-  }
-
   private async buildContext(message: any): Promise<MessageContext> {
     const phoneNumber = extractPhoneNumber(message.from);
     const user = await this.userModel.findByPhone(phoneNumber);
@@ -516,46 +289,6 @@ export class MessageController {
     }));
 
     return { phoneNumber, user, userName, authData, validCategories };
-  }
-
-  private async processCategoryRequest(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
-    const input = message.body.toLowerCase().trim();
-
-    
-    const keywords = [
-      "minhas categorias",
-      "categorias",
-      "listar categorias",
-      "quais são minhas categorias",
-      "traga minhas categorias",
-      "quais é as categorias",
-      "quais minhas categorias"
-    ];
-  
-    if (keywords.includes(input)) {
-      const categories = context.validCategories;
-  
-      if (!categories || categories.length === 0) {
-        await this.safeSendText(client, message.from, "😕 Você ainda não tem categorias cadastradas.");
-        return true;
-      }
-  
-      // Use seu visualizador formatado
-      const response = this.messageView.listAllCategories(categories);
-      await this.safeSendText(client, message.from, response);
-      return true;
-    }
-  
-    return false;
-  }
-  private async processAccountTotal(message: any, client: Whatsapp, context: MessageContext): Promise<boolean> {
-  
-    if (message.body?.toLowerCase() === "teste") {
-      console.log("✅ caiu aqui");
-      return true;
-    }
-  
-    return false;
   }
 }
 

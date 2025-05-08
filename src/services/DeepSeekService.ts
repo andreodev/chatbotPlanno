@@ -11,7 +11,8 @@ export interface DeepSeekResponse {
     | "invalid_category"
     | "similar_categories"
     | "confirm_transaction"
-    | "cancel_transaction";
+    | "cancel_transaction"
+    | "categories";
   data?: {
     value: string;
     category: string;
@@ -281,6 +282,33 @@ class DeepSeekService {
       type: "error",
       content:
         "Não entendi sua resposta. Por favor, responda 'Sim' para confirmar ou 'Não' para cancelar.",
+    };
+  }
+
+  public async analyzeMessage(userMessage: string): Promise<DeepSeekResponse> {
+    const response = await this.generateFormattedResponse(userMessage);
+  
+    const normalized = this.normalizeInput(userMessage);
+  
+    // 🎯 Aqui é onde você define as regras de intenção (com base na IA + heurísticas locais se quiser)
+    if (response.type === "message" && normalized.includes("categoria")) {
+      return {
+        ...response,
+        intent: "categorias",
+      };
+    }
+  
+    if (response.type === "form") {
+      return {
+        ...response,
+        intent: "transacao",
+      };
+    }
+  
+    // Se nenhuma intenção clara for identificada, você pode retornar como erro ou neutro
+    return {
+      ...response,
+      intent: "desconhecida",
     };
   }
 }

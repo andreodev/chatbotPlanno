@@ -1,4 +1,5 @@
 import AppContext from "../context/AppContext";
+import selectedAccountStore  from "../global/selectAccountStore";
 import { IContaBancario } from "../interfaces/IContaBancaria";
 import { Category } from "../models/Category";
 
@@ -47,7 +48,7 @@ class MessageView {
     invalidCategory: string,
     validCategories: Category[]
   ): string {
-    const categoriesList = this.formatCategoriesList(validCategories); // Usar o método correto
+    const categoriesList = this.formatCategoriesList(validCategories);
     return (
       `🔍 *Categoria não encontrada*\n\n` +
       `A categoria "${invalidCategory}" não existe em seu cadastro.\n\n` +
@@ -61,7 +62,7 @@ class MessageView {
     suggestedCategory: string,
     validCategories: Category[]
   ): string {
-    const categoriesList = this.formatCategoriesList(validCategories); // Usar o método correto
+    const categoriesList = this.formatCategoriesList(validCategories);
 
     return (
       `🔍 *Sugestão de Categoria*\n\n` +
@@ -84,43 +85,32 @@ class MessageView {
     userName?: string;
     listaContasBancarias: IContaBancario[] | null;
     contaBancariaSelecionada: IContaBancario | null;
-    setSelectedContaBancaria: (Conta: IContaBancario) => void;
     description?: string;
     type: string;
     body: string;
   }): string {
-    if (!data.contaBancariaSelecionada) {
+    const contaBancariaSelecionada = selectedAccountStore.get(data.body.trim());
+
+    if (!contaBancariaSelecionada) {
       return this.requestAccountSelection(data);
     }
 
-    if (data.contaBancariaSelecionada) {
-      if (data.type) {
-        return this.confirmTransaction({
-          value: data.value,
-          category: data.category,
-          contaBancariaSelecionada: data.contaBancariaSelecionada,
-          type: data.type,
-        });
-      } else {
-        return this.confirmTransaction({
-          value: data.value,
-          category: data.category,
-          contaBancariaSelecionada: data.contaBancariaSelecionada,
-          type: "expense", // Definindo tipo padrão
-        });
-      }
-    }
-    return `❌ Não foi possível processar a transação. Por favor, tente novamente.`;
+    return this.confirmTransaction({
+      value: data.value,
+      category: data.category,
+      contaBancariaSelecionada,
+      type: data.type || "expense",
+    });
   }
 
   private requestAccountSelection(data: {
     listaContasBancarias: IContaBancario[] | null;
     contaBancariaSelecionada: IContaBancario | null;
-    setSelectedContaBancaria: (Conta: IContaBancario) => void;
     body: string;
   }): string {
     const contas = data.listaContasBancarias || [];
-    console.log("dados: ", data.listaContasBancarias);
+
+    console.log(contas)
 
     if (contas.length === 0) {
       return `❌ Não há contas bancárias registradas. Por favor, adicione uma conta antes de continuar.`;
@@ -128,13 +118,9 @@ class MessageView {
 
     const escolhaUsuario = parseInt(data.body.trim());
 
-    if (
-      !isNaN(escolhaUsuario) &&
-      escolhaUsuario > 0 &&
-      escolhaUsuario <= contas.length
-    ) {
+    if (!isNaN(escolhaUsuario) && escolhaUsuario > 0 && escolhaUsuario <= contas.length) {
       const contaSelecionada = contas[escolhaUsuario - 1];
-      data.setSelectedContaBancaria(contaSelecionada);
+      selectedAccountStore.set(data.body.trim(), contaSelecionada);
     }
 
     const listaContasFormatada = contas
@@ -150,23 +136,16 @@ class MessageView {
     contaBancariaSelecionada: IContaBancario;
     type: string;
   }): string {
-    // Validação adicional para tipo inconsistente
-    console.log('Tipo antes do envio:', data.type);
     const isIncomeCategory = ["salário", "rendimento"].includes(
       data.category.toLowerCase()
     );
+
     if (isIncomeCategory && data.type === "expense") {
       console.warn("Aviso: Tipo inconsistente para categoria de receita");
       data.type = "income"; // Auto-correção
     }
 
-    // Restante da validação original...
-    if (
-      !data.value ||
-      !data.category ||
-      !data.contaBancariaSelecionada ||
-      !data.type
-    ) {
+    if (!data.value || !data.category || !data.contaBancariaSelecionada || !data.type) {
       return "❌ Não foi possível confirmar a transação. Dados incompletos.";
     }
 
@@ -186,27 +165,21 @@ class MessageView {
     type: string;
     contaBancariaSelecionada: IContaBancario;
   }): string {
-
-    console.log('Tipo antes do envio:', data.type);
     const isIncomeCategory = ["salário", "rendimento"].includes(
       data.category.toLowerCase()
     );
+
     if (isIncomeCategory && data.type === "expense") {
       console.warn("Aviso: Tipo inconsistente para categoria de receita");
       data.type = "income"; // Auto-correção
     }
-    // Verificação de dados essenciais
-    if (
-      !data.value ||
-      !data.category ||
-      !data.contaBancariaSelecionada ||
-      !data.type
-    ) {
+
+    if (!data.value || !data.category || !data.contaBancariaSelecionada || !data.type) {
       return "❌ Não foi possível registrar a transação. Dados incompletos.";
     }
 
     return (
-      `✅ *Dados enviado ao aplicativo!*\n\n` +
+      `✅ *Dados enviados ao aplicativo!*\n\n` +
       `▸ *Conta:* ${data.contaBancariaSelecionada.name}\n` +
       `▸ *Valor:* R$ ${data.value}\n` +
       `▸ *Categoria:* ${data.category}\n` +
@@ -222,7 +195,6 @@ class MessageView {
       categories
         .map((c) => `• ${c.title} ${c.type === "expense" ? "📉" : "📈"}`)
         .join("\n");
-
 
     let message = `📂 *Suas categorias:*\n\n`;
 

@@ -31,12 +31,11 @@ class AuthService {
   public async login(): Promise<AuthResponse> {
     console.log('🔍 Iniciando processo de login...');
 
-    
     try {
       if (!this.API_URL) {
         throw new Error('URL da API não configurada');
       }
-
+      
       const response = await axios.post<AuthResponse>(`${this.API_URL}/login`, {
         email: this.API_EMAIL,
         password: this.API_PASSWORD
@@ -46,7 +45,7 @@ class AuthService {
         },
         timeout: 10000
       });
-
+      
       this.logAuthData(response.data);
       this.authToken = response.data.token;  // Armazena o token na memória
       return response.data;
